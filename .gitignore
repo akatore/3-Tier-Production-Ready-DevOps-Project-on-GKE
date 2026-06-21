@@ -1,0 +1,27 @@
+# Node
+node_modules/
+dist/
+coverage/
+npm-debug.log*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Env / secrets
+.env
+*.local
+*-key.json
+kubeconfig
+*.pem
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,29 @@
+# Helm values for ingress-nginx on GKE.
+# helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx \
+#   --create-namespace -f platform/ingress-nginx/values.yaml
+controller:
+  replicaCount: 2
+  service:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations:
+      cloud.google.com/load-balancer-type: "External"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  config:
+    use-forwarded-headers: "true"
+    enable-real-ip: "true"
+  podSecurityContext:
+    runAsNonRoot: true
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5

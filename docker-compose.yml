@@ -1,0 +1,42 @@
+# Local development stack mirroring the 3 tiers.
+# Run: docker compose up --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./app/backend
+    environment:
+      DB_HOST: postgres
+      DB_USER: appuser
+      DB_PASSWORD: changeme
+      DB_NAME: appdb
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./app/frontend
+    ports:
+      - "8081:8080"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

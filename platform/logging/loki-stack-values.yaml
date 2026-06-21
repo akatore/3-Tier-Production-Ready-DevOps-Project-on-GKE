@@ -1,0 +1,29 @@
+# Helm values for Grafana Loki + Promtail (log aggregation).
+# helm install loki grafana/loki-stack -n logging --create-namespace \
+#   -f loki-stack-values.yaml
+loki:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+  config:
+    limits_config:
+      retention_period: 168h   # 7 days
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 168h
+
+promtail:
+  enabled: true
+  config:
+    snippets:
+      # Drop noisy health-check log lines to control volume/cost.
+      pipeline_stages:
+        - match:
+            selector: '{namespace=~"tier3.*"}'
+            stages:
+              - drop:
+                  expression: ".*(healthz|readyz).*"
+
+grafana:
+  enabled: false   # Grafana is provided by kube-prometheus-stack
