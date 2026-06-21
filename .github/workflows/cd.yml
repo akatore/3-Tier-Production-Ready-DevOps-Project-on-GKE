@@ -1,0 +1,73 @@
+name: CD - Build & Push Images
+
+# Builds images, pushes to Artifact Registry, and bumps the image tag in the
+# GitOps overlay. ArgoCD then syncs the change to the cluster (pull-based CD).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/cd.yml"
+
+permissions:
+  contents: write   # to commit the image tag bump
+  id-token: write   # for Workload Identity Federation (keyless auth to GCP)
+
+env:
+  REGION: us-central1
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REPO: tier3-gke-images
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: vars
+        run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Build & push backend
+        run: |
+          IMG=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/backend
+          docker build -t $IMG:${{ steps.vars.outputs.sha }} -t $IMG:latest app/backend
+          docker push $IMG:${{ steps.vars.outputs.sha }}
+          docker push $IMG:latest
+
+      - name: Build & push frontend
+        run: |
+          IMG=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/frontend
+          docker build -t $IMG:${{ steps.vars.outputs.sha }} -t $IMG:latest app/frontend
+          docker push $IMG:${{ steps.vars.outputs.sha }}
+          docker push $IMG:latest
+
+      - name: Bump image tags in GitOps overlay
+        run: |
+          cd k8s/overlays/production
+          curl -sLo kustomize https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.3/kustomize_v5.4.3_linux_amd64
+          chmod +x kustomize
+          BE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/backend
+          FE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/frontend
+          ./kustomize edit set image backend=$BE:${{ steps.vars.outputs.sha }}
+          ./kustomize edit set image frontend=$FE:${{ steps.vars.outputs.sha }}
+          rm kustomize
+
+      - name: Commit & push tag bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/overlays/production/kustomization.yaml
+          git commit -m "ci: deploy ${{ steps.vars.outputs.sha }} [skip ci]" || echo "no changes"
+          git push
